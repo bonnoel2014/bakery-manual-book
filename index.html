@@ -91,6 +91,24 @@
   .intro-banner .ib-sub{ font-size:12px; opacity:.85; }
   .intro-banner .ib-arrow{ font-size:20px; flex-shrink:0; }
 
+  /* 홈 - 카테고리 타일 화면 */
+  .section-label{ font-size:11.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.1em; font-weight:700; margin:4px 2px 10px; }
+  .cat-tile{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-m);
+    padding:16px; cursor:pointer; box-shadow:var(--shadow);
+  }
+  .cat-tile:hover{ border-color:var(--line-strong); }
+  .cat-tile .ct-name{ font-size:15px; font-weight:700; margin-bottom:4px; }
+  .cat-tile .ct-count{ font-size:12px; color:var(--ink-faint); }
+  .cat-tile-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:10px; margin-bottom:14px; }
+  .cat-tile.required{
+    background:var(--accent); border-color:var(--accent); color:var(--accent-ink);
+    margin-bottom:22px; padding:18px 20px;
+  }
+  .cat-tile.required .ct-name{ font-size:16px; }
+  .cat-tile.required .ct-count{ color:var(--accent-ink); opacity:.85; }
+  .cat-tile.all{ background:var(--surface-sunken); border-style:dashed; border-color:var(--line-strong); margin-top:2px; margin-bottom:16px; }
+
   /* 회사 소개 페이지 */
   .about-page{ padding-top:28px; }
   .about-hero{ text-align:center; margin-bottom:26px; }
@@ -370,6 +388,7 @@
     view: 'home',         // home | detail | admin-login | admin
     activeCategory: null,
     onlyRequired: false,  // 홈에서 "신입 필수"만 보기
+    browsingAll: false,   // "전체 매뉴얼" 타일을 눌러 카테고리 없이 전체 목록을 보는 중
     query: '',
     detailManualId: null,
     isAdmin: false,
@@ -527,13 +546,90 @@
     state.view = 'home';
     state.activeCategory = null;
     state.onlyRequired = false;
+    state.browsingAll = false;
     state.query = '';
     state.editingManual = null;
     render();
     window.scrollTo(0,0);
   }
 
+  // 카테고리를 고르거나 검색을 하면 "둘러보기" 화면으로, 아무것도 안 골랐으면 카테고리 타일 화면으로
+  function isBrowsing(){
+    return state.browsingAll || !!state.activeCategory || state.onlyRequired || !!state.query.trim();
+  }
+
+  function categoryCount(id){
+    return state.manuals.filter(function(m){ return m.category_id === id; }).length;
+  }
+
   function renderHome(){
+    if (isBrowsing()) return renderHomeBrowse();
+    return renderHomeOverview();
+  }
+
+  // ===== 홈 - 카테고리 타일 화면 =====
+  function renderHomeOverview(){
+    var reqCount = requiredManuals().length;
+
+    var tilesHtml = state.categories.map(function(c){
+      var n = categoryCount(c.id);
+      return (
+        '<div class="cat-tile" data-cat="' + esc(c.id) + '">' +
+          '<div class="ct-name">' + esc(c.name) + '</div>' +
+          '<div class="ct-count">매뉴얼 ' + n + '개</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    app.innerHTML =
+      renderHeader() +
+      '<div class="intro-banner" id="btnAbout">' +
+        '<div class="ib-text"><div class="ib-title">본노엘을 소개합니다</div><div class="ib-sub">일 시작 전에 먼저 읽어주세요</div></div>' +
+        '<span class="ib-arrow">&rarr;</span>' +
+      '</div>' +
+      '<div class="search-box"><span class="icon">&#128269;</span><input id="searchInput" type="text" placeholder="예: 컵홀더, 단팥빵, 근로계약서" value=""></div>' +
+
+      '<div class="cat-tile required" id="tileRequired">' +
+        '<div class="ct-name">신입 필수 매뉴얼</div>' +
+        '<div class="ct-count">' + reqCount + '개 · 입사하면 가장 먼저 확인하세요</div>' +
+      '</div>' +
+
+      '<div class="section-label">카테고리별로 보기</div>' +
+      '<div class="cat-tile-grid">' + tilesHtml + '</div>' +
+
+      '<div class="cat-tile all" id="tileAll">' +
+        '<div class="ct-name">전체 매뉴얼 보기</div>' +
+        '<div class="ct-count">' + state.manuals.length + '개 모두 보기</div>' +
+      '</div>' +
+
+      '<div class="foot">BON NOËL · SINCE 2014</div>';
+
+    bindHeaderEvents();
+
+    var si = document.getElementById('searchInput');
+    si.addEventListener('input', function(){ state.query = si.value; render(); });
+
+    document.querySelectorAll('[data-cat]').forEach(function(el){
+      el.addEventListener('click', function(){
+        state.activeCategory = el.getAttribute('data-cat');
+        render();
+        window.scrollTo(0,0);
+      });
+    });
+    document.getElementById('tileRequired').addEventListener('click', function(){
+      state.onlyRequired = true;
+      render();
+      window.scrollTo(0,0);
+    });
+    document.getElementById('tileAll').addEventListener('click', function(){
+      state.browsingAll = true;
+      render();
+      window.scrollTo(0,0);
+    });
+  }
+
+  // ===== 홈 - 둘러보기(검색·카테고리·신입필수 필터) 화면 =====
+  function renderHomeBrowse(){
     var reqCount = requiredManuals().length;
     var chips = [
       '<button class="chip' + (!state.activeCategory && !state.onlyRequired ? ' active' : '') + '" data-cat="">전체</button>',
@@ -545,16 +641,22 @@
 
     app.innerHTML =
       renderHeader() +
-      '<div class="intro-banner" id="btnAbout">' +
-        '<div class="ib-text"><div class="ib-title">본노엘을 소개합니다</div><div class="ib-sub">일 시작 전에 먼저 읽어주세요</div></div>' +
-        '<span class="ib-arrow">&rarr;</span>' +
-      '</div>' +
+      '<button class="back-btn" id="btnBackOverview">&larr; 카테고리로</button>' +
       '<div class="search-box"><span class="icon">&#128269;</span><input id="searchInput" type="text" placeholder="예: 컵홀더, 단팥빵, 근로계약서" value="' + esc(state.query) + '"></div>' +
       '<div class="chips">' + chips.join('') + '</div>' +
       '<div class="manual-list">' + manualListHtml(visibleManuals()) + '</div>' +
       '<div class="foot">BON NOËL · SINCE 2014</div>';
 
     bindHeaderEvents();
+
+    document.getElementById('btnBackOverview').addEventListener('click', function(){
+      state.activeCategory = null;
+      state.onlyRequired = false;
+      state.browsingAll = false;
+      state.query = '';
+      render();
+      window.scrollTo(0,0);
+    });
 
     var si = document.getElementById('searchInput');
     si.addEventListener('input', function(){ state.query = si.value; renderListOnly(); });
@@ -569,6 +671,7 @@
         } else {
           state.activeCategory = el.getAttribute('data-cat') || null;
           state.onlyRequired = false;
+          state.browsingAll = !state.activeCategory; // "전체" 칩을 누르면 계속 둘러보기 화면에 머무름
         }
         render();
       });
