@@ -6,31 +6,32 @@
 <title>신입 직원 매뉴얼북</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#642e2c">
+<meta name="theme-color" content="#c96b7b">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="매뉴얼북">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=Gowun+Batang:wght@400;700&display=swap">
 <style>
   :root{
-    --paper:#faf7f2;
-    --surface:#ffffff;
-    --surface-sunken:#f1ece3;
-    --ink:#2b2420;
-    --ink-soft:#6b6259;
-    --ink-faint:#9a9086;
-    --line:#e5ddd0;
-    --line-strong:#d3c7b4;
-    --accent:#642e2c;
-    --accent-soft:#f0e2e0;
-    --accent-ink:#f7efe4;
-    --danger:#b5432c;
-    --danger-soft:#f6dfd8;
-    --ok:#2f7a4f;
-    --ok-soft:#dcefe1;
+    --paper: oklch(99.5% .002 20);
+    --surface: oklch(100% 0 0);
+    --surface-sunken: oklch(96.5% .012 20);
+    --ink: oklch(22% .02 20);
+    --ink-soft: oklch(50% .02 20);
+    --ink-faint: oklch(62% .015 20);
+    --line: oklch(92% .015 20);
+    --line-strong: oklch(85% .02 20);
+    --accent: oklch(64% .12 10);
+    --accent-soft: oklch(94% .04 15);
+    --accent-ink: oklch(99% .005 20);
+    --danger: oklch(55% .14 25);
+    --danger-soft: oklch(95% .03 25);
+    --ok: oklch(55% .1 150);
+    --ok-soft: oklch(95% .04 150);
+    --font-serif: 'Gowun Batang', ui-serif, Georgia, serif;
     --shadow: 0 1px 2px rgba(43,36,32,0.06), 0 6px 18px -10px rgba(43,36,32,0.22);
     --radius-s: 6px;
     --radius-m: 12px;
@@ -39,21 +40,21 @@
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --paper:#1c1713;
-      --surface:#252019;
-      --surface-sunken:#2c261e;
-      --ink:#f1ece3;
-      --ink-soft:#b7ada0;
-      --ink-faint:#847a6e;
-      --line:#3a3226;
-      --line-strong:#4a4030;
-      --accent:#d9a39e;
-      --accent-soft:#3b2523;
-      --accent-ink:#2a1412;
-      --danger:#e59078;
-      --danger-soft:#3a241d;
-      --ok:#7bc79a;
-      --ok-soft:#1e2f24;
+      --paper: oklch(18% .02 20);
+      --surface: oklch(23% .02 20);
+      --surface-sunken: oklch(27% .02 20);
+      --ink: oklch(94% .01 20);
+      --ink-soft: oklch(72% .015 20);
+      --ink-faint: oklch(58% .015 20);
+      --line: oklch(30% .02 20);
+      --line-strong: oklch(36% .02 20);
+      --accent: oklch(75% .1 10);
+      --accent-soft: oklch(28% .05 15);
+      --accent-ink: oklch(20% .04 15);
+      --danger: oklch(72% .12 25);
+      --danger-soft: oklch(28% .05 25);
+      --ok: oklch(70% .1 150);
+      --ok-soft: oklch(25% .05 150);
       color-scheme: dark;
     }
   }
@@ -77,9 +78,9 @@
   .head-link:hover{ border-color:var(--line-strong); }
   .brand{ display:flex; align-items:center; gap:12px; min-width:0; cursor:pointer; }
   .brand img{ width:44px; height:44px; border-radius:12px; flex-shrink:0; box-shadow:var(--shadow); }
-  .brand .kicker{ font-size:10.5px; letter-spacing:.18em; text-transform:uppercase; font-weight:600; color:var(--accent); margin-bottom:1px; }
+  .brand .kicker{ font-family:var(--font-serif); font-size:11px; letter-spacing:.18em; text-transform:uppercase; font-weight:600; color:var(--accent); margin-bottom:1px; }
   .center-card .logo{ width:76px; height:76px; border-radius:20px; display:block; margin:0 auto 16px; box-shadow:var(--shadow); }
-  .foot{ text-align:center; margin-top:44px; color:var(--ink-faint); font-size:11px; letter-spacing:.16em; }
+  .foot{ font-family:var(--font-serif); text-align:center; margin-top:44px; color:var(--ink-faint); font-size:12px; letter-spacing:.16em; }
 
   /* 회사 소개 배너 (홈 화면 상단) */
   .intro-banner{
@@ -114,7 +115,7 @@
   .about-hero{ text-align:center; margin-bottom:26px; }
   .about-hero img{ width:64px; height:64px; border-radius:16px; box-shadow:var(--shadow); margin-bottom:14px; }
   .about-hero h2{ margin:0 0 6px; font-size:22px; }
-  .about-kicker{ font-size:11px; letter-spacing:.18em; color:var(--ink-faint); }
+  .about-kicker{ font-family:var(--font-serif); font-size:12px; letter-spacing:.18em; color:var(--ink-faint); }
   .about-frenchnote{ font-size:12.5px; color:var(--accent); margin-top:10px; }
   .about-lead{ font-size:14.5px; line-height:1.75; color:var(--ink-soft); margin-bottom:28px; padding-bottom:24px; border-bottom:1px dashed var(--line-strong); }
   .about-section{ margin-bottom:26px; }
@@ -126,7 +127,8 @@
   .about-list{ margin:0 0 12px; padding-left:20px; }
   .about-list li{ font-size:14px; line-height:1.9; color:var(--ink-soft); }
   .about-quote{
-    text-align:center; font-size:17px; font-weight:700; line-height:1.6;
+    font-family:var(--font-serif);
+    text-align:center; font-size:19px; font-weight:700; line-height:1.6;
     color:var(--accent); background:var(--accent-soft); border-radius:var(--radius-m);
     padding:26px 18px; margin:0 0 28px;
   }
@@ -177,7 +179,7 @@
   .video-wrap iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
   .steps{ list-style:none; margin:0 0 18px; padding:0; display:flex; flex-direction:column; gap:12px; }
   .steps li{ display:flex; gap:12px; }
-  .step-num{ flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--accent-soft); color:var(--accent); font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .step-num{ flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--accent-soft); color:var(--accent); font-family:var(--font-serif); font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; }
   .step-text{ padding-top:3px; font-size:14.5px; white-space:pre-wrap; }
   .detail-card .tags{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:20px; }
 
