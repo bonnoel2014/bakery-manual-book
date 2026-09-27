@@ -183,6 +183,12 @@
   .step-text{ padding-top:3px; font-size:14.5px; white-space:pre-wrap; }
   .detail-card .tags{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:20px; }
 
+  .quiz-section{ background:var(--surface-sunken); border-radius:var(--radius-m); padding:16px 18px; margin-bottom:18px; }
+  .quiz-section h4{ margin:0 0 12px; font-size:14px; }
+  .quiz-take-q{ margin-bottom:14px; }
+  .quiz-take-q p{ margin:0 0 8px; font-size:14px; font-weight:600; }
+  .quiz-opt{ display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:14px; cursor:pointer; }
+  .quiz-wrong{ background:var(--danger-soft); color:var(--danger); padding:10px 14px; border-radius:var(--radius-s); font-size:13.5px; font-weight:600; margin-top:8px; }
   .confirm-box{ border-top:1px dashed var(--line-strong); padding-top:18px; margin-top:4px; }
   .confirm-box p{ font-size:13px; color:var(--ink-soft); margin:0 0 10px; }
   .confirm-row{ display:flex; gap:8px; }
@@ -235,6 +241,10 @@
   .step-edit-row textarea{ flex:1; }
   .step-edit-row .step-btns{ display:flex; flex-direction:column; gap:4px; }
   .mini-btn{ padding:4px 7px; font-size:11px; border-radius:4px; border:1px solid var(--line); background:var(--surface); color:var(--ink-soft); cursor:pointer; }
+  .mini-btn.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .quiz-q-edit{ background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-m); padding:12px; margin-bottom:10px; }
+  .quiz-q-edit textarea, .quiz-q-edit select{ width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); font-family:inherit; font-size:13px; }
+  .quiz-q-edit select{ width:auto; }
 
   .photo-grid{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px; }
   .photo-item{ position:relative; width:96px; height:96px; }
@@ -283,6 +293,12 @@
   .badge.no{ background:var(--danger-soft); color:var(--danger); }
   .badge.req{ background:var(--accent-soft); color:var(--accent); }
   .badge.late{ background:var(--danger-soft); color:var(--danger); }
+  .late-dot{
+    position:absolute; top:-6px; right:-6px; min-width:17px; height:17px; padding:0 3px;
+    border-radius:999px; background:var(--danger); color:#fff; font-size:10px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; line-height:1;
+  }
+  .admin-tab{ position:relative; }
   .manual-card .title .badge, .list-row .t .badge, .detail-card h2 .badge{ vertical-align:middle; margin-left:6px; }
 
   /* 확인 UI (매장 → 이름 고르기) */
@@ -369,6 +385,11 @@
     return Math.max(1, Math.round((today - start) / 86400000) + 1);
   }
 
+  // 입사일(hire_on)이 있으면 그걸, 없으면 등록일(created_at)을 기준으로 삼음
+  function hireDate(s){
+    return s.hire_on || s.created_at;
+  }
+
   function extractYoutubeId(url){
     if (!url) return '';
     var m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{6,})/);
@@ -399,7 +420,8 @@
     editingManual: null,  // 편집 중인 매뉴얼 draft 객체 (신규 작성 포함)
     statusManualId: null,
     statusBranchId: null,  // 확인 현황 탭에서 고른 매장 (null = 전체)
-    progressBranchId: null // 진행률 탭에서 고른 매장 (null = 전체)
+    progressBranchId: null, // 진행률 탭에서 고른 매장 (null = 전체)
+    lateCount: 0           // 입사 7일 지났는데 필수 매뉴얼 남은 신입 수 (배지용)
   };
 
   // 매장 공용폰이라 마지막에 고른 매장을 기억해 두면 다음 사람은 이름만 고르면 됨
@@ -442,10 +464,34 @@
       state.supplies = supplyRes.data || [];
       state.loaded = true;
       render();
+      refreshLateCount();
     }).catch(function(err){
       console.error(err);
       app.innerHTML = '<div class="empty">데이터를 불러오지 못했습니다.<br>' + esc(err.message || err) + '</div>';
     });
+  }
+
+  // 입사 7일 지났는데 필수 매뉴얼이 남은 신입 수를 세서 배지에 씀 (외부 발송 없이 화면 표시만)
+  function refreshLateCount(){
+    var required = requiredManuals();
+    if (!required.length){ state.lateCount = 0; return; }
+    var requiredIds = required.map(function(m){ return m.id; });
+    sb.from('manual_confirmations').select('manual_id, staff_id, staff_name').in('manual_id', requiredIds).then(function(res){
+      if (res.error) return;
+      var rows = res.data || [];
+      var doneById = {}, doneByName = {};
+      rows.forEach(function(c){
+        var bucket = c.staff_id ? (doneById[c.staff_id] = doneById[c.staff_id] || {}) : (c.staff_name ? (doneByName[c.staff_name] = doneByName[c.staff_name] || {}) : null);
+        if (bucket) bucket[c.manual_id] = true;
+      });
+      var late = 0;
+      state.staff.filter(function(s){ return s.active !== false; }).forEach(function(s){
+        var done = Object.assign({}, doneByName[s.name] || {}, doneById[s.id] || {});
+        var remaining = required.filter(function(m){ return !done[m.id]; });
+        if (remaining.length && daysSince(hireDate(s)) > 7) late++;
+      });
+      if (state.lateCount !== late){ state.lateCount = late; render(); }
+    }).catch(function(){});
   }
 
   function categoryName(id){
@@ -530,6 +576,10 @@
     return renderHome();
   }
 
+  function lateBadgeHtml(){
+    return state.lateCount ? '<span class="late-dot">' + (state.lateCount > 9 ? '9+' : state.lateCount) + '</span>' : '';
+  }
+
   function renderHeader(subtitle, opts){
     opts = opts || {};
     var linkLabel = state.isAdmin ? '관리자 화면' : '관리자';
@@ -539,7 +589,7 @@
       backHtml +
       '<div class="head">' +
         '<div class="brand" id="brandHome" title="홈으로"><img src="logo.png" alt="Bon Noël"><div><div class="kicker">Bon Noël</div><h1>신입 직원 매뉴얼북</h1><div class="sub">' + esc(subtitle || '검색하면 바로 찾아요') + '</div></div></div>' +
-        '<div style="display:flex; gap:6px; flex-shrink:0;">' + homeBtn + '<button class="head-link" id="btnAdminLink">' + esc(linkLabel) + '</button></div>' +
+        '<div style="display:flex; gap:6px; flex-shrink:0;">' + homeBtn + '<button class="head-link" id="btnAdminLink" style="position:relative;">' + esc(linkLabel) + lateBadgeHtml() + '</button></div>' +
       '</div>'
     );
   }
@@ -805,7 +855,8 @@
         stepsHtml +
         suppliesHtml +
         tagsHtml +
-        '<div class="confirm-box">' +
+        '<div id="quizBox"></div>' +
+        '<div class="confirm-box" id="confirmBox">' +
           '<p>다 확인하셨으면 매장과 본인 이름을 고르고 버튼을 눌러주세요.</p>' +
           '<div id="confirmArea"></div>' +
           '<div class="confirmed-list" id="confirmedList"><h4>확인한 사람</h4><div class="loading" style="padding:10px 0;">불러오는 중…</div></div>' +
@@ -816,6 +867,54 @@
 
     var confirmed = [];          // 이 매뉴얼의 확인 기록
     var confirmedStaffIds = {};  // staff_id → confirmed_at
+    var quizQuestions = [];
+    var quizAnswers = {};
+    var quizTries = 0;
+    var quizPassed = !m.quiz_required;
+    if (m.quiz_required) document.getElementById('confirmBox').style.display = 'none';
+
+    function renderQuizBox(){
+      var box = document.getElementById('quizBox');
+      if (!box || !quizQuestions.length) return;
+      var qHtml = quizQuestions.map(function(q, i){
+        var opts = q.type === 'mc' ? q.options : ['O', 'X'];
+        var optsHtml = opts.map(function(opt, j){
+          return (
+            '<label class="quiz-opt">' +
+              '<input type="radio" name="quiz-take-' + i + '" data-quiz-take="' + i + ':' + j + '"' + (quizAnswers[i] === j ? ' checked' : '') + '> ' + esc(opt) +
+            '</label>'
+          );
+        }).join('');
+        return '<div class="quiz-take-q"><p>' + (i+1) + '. ' + esc(q.question) + '</p>' + optsHtml + '</div>';
+      }).join('');
+      box.innerHTML =
+        '<div class="quiz-section">' +
+          '<h4>이해도 확인' + (m.quiz_required ? '' : ' (참고용)') + '</h4>' +
+          qHtml +
+          '<button class="btn secondary" id="btnQuizSubmit">제출</button>' +
+          '<div id="quizResult"></div>' +
+        '</div>';
+      box.querySelectorAll('[data-quiz-take]').forEach(function(el){
+        el.addEventListener('change', function(){
+          var parts = el.getAttribute('data-quiz-take').split(':');
+          quizAnswers[+parts[0]] = +parts[1];
+        });
+      });
+      document.getElementById('btnQuizSubmit').addEventListener('click', function(){
+        if (Object.keys(quizAnswers).length < quizQuestions.length){ toast('모든 문제에 답해주세요.'); return; }
+        quizTries++;
+        var wrong = quizQuestions.filter(function(q, i){ return quizAnswers[i] !== q.answer_index; }).length;
+        var resultEl = document.getElementById('quizResult');
+        if (!wrong){
+          quizPassed = true;
+          resultEl.innerHTML = '<div class="confirm-done">다 맞았어요! 아래에서 확인해주세요.</div>';
+          var cb = document.getElementById('confirmBox');
+          if (cb) cb.style.display = '';
+        } else {
+          resultEl.innerHTML = '<div class="quiz-wrong">' + wrong + '개 틀렸어요.' + (m.quiz_required ? ' 다시 도전해보세요.' : '') + '</div>';
+        }
+      });
+    }
 
     // 확인 기록 한 줄을 (이름, 매장)으로 풀어 줌. 옛 기록(staff_id 없음)은 이름 문자열로 표시
     function describe(c){
@@ -884,7 +983,7 @@
         }
         var btn = document.getElementById('btnConfirm');
         btn.disabled = true;
-        sb.from('manual_confirmations').insert({ manual_id: m.id, staff_id: staffId, staff_name: staff.name }).select().then(function(res){
+        sb.from('manual_confirmations').insert({ manual_id: m.id, staff_id: staffId, staff_name: staff.name, quiz_tries: quizQuestions.length ? quizTries : null }).select().then(function(res){
           if (res.error){
             btn.disabled = false;
             // 23505 = 이미 같은 사람의 기록이 있음 (DB unique 제약)
@@ -917,6 +1016,11 @@
 
     renderConfirmArea();
     loadConfirmed();
+    sb.from('manual_quiz_questions').select('*').eq('manual_id', m.id).order('sort_order', {ascending:true}).then(function(res){
+      if (res.error) return;
+      quizQuestions = res.data || [];
+      renderQuizBox();
+    });
   }
 
   // ===== 관리자 로그인 =====
@@ -964,7 +1068,8 @@
       ['status', '확인 현황']
     ];
     var tabsHtml = tabs.map(function(t){
-      return '<button class="admin-tab' + (state.adminTab === t[0] ? ' active' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>';
+      var badge = t[0] === 'progress' ? lateBadgeHtml() : '';
+      return '<button class="admin-tab' + (state.adminTab === t[0] ? ' active' : '') + '" data-tab="' + t[0] + '">' + t[1] + badge + '</button>';
     }).join('');
 
     app.innerHTML =
@@ -1016,16 +1121,25 @@
       rows;
 
     document.getElementById('btnNewManual').addEventListener('click', function(){
-      state.editingManual = { id:null, title:'', category_id: state.categories[0] ? state.categories[0].id : null, tags:[], youtube_url:'', photos:[], steps:[''], is_required:false, supply_ids:[] };
+      state.editingManual = { id:null, title:'', category_id: state.categories[0] ? state.categories[0].id : null, tags:[], youtube_url:'', photos:[], steps:[''], is_required:false, supply_ids:[], quiz_required:false, quiz_questions:[] };
       render();
     });
     body.querySelectorAll('[data-edit]').forEach(function(el){
       el.addEventListener('click', function(){
         var m = state.manuals.filter(function(x){ return x.id === el.getAttribute('data-edit'); })[0];
-        state.editingManual = JSON.parse(JSON.stringify(m));
-        if (!state.editingManual.steps || !state.editingManual.steps.length) state.editingManual.steps = [''];
-        if (!state.editingManual.supply_ids) state.editingManual.supply_ids = [];
+        var draft = JSON.parse(JSON.stringify(m));
+        if (!draft.steps || !draft.steps.length) draft.steps = [''];
+        if (!draft.supply_ids) draft.supply_ids = [];
+        draft.quiz_questions = [];
+        state.editingManual = draft;
         render();
+        sb.from('manual_quiz_questions').select('*').eq('manual_id', m.id).order('sort_order', {ascending:true}).then(function(res){
+          if (res.error || state.editingManual !== draft) return;
+          draft.quiz_questions = (res.data || []).map(function(q){
+            return { type: q.type, question: q.question, options: q.options || [], answer_index: q.answer_index };
+          });
+          render();
+        });
       });
     });
     body.querySelectorAll('[data-del]').forEach(function(el){
@@ -1084,6 +1198,39 @@
       return '<div class="photo-item"><img src="' + esc(p.url) + '"><span class="rm" data-photo-del="' + i + '">&times;</span></div>';
     }).join('');
 
+    var quizHtml = (draft.quiz_questions||[]).map(function(q, i){
+      var body2;
+      if (q.type === 'mc'){
+        var optsHtml = (q.options||[]).map(function(opt, j){
+          return (
+            '<div style="display:flex; gap:6px; align-items:center; margin-bottom:5px;">' +
+              '<input type="radio" name="quiz-answer-' + i + '" data-quiz-mc-answer="' + i + ':' + j + '"' + (q.answer_index === j ? ' checked' : '') + '>' +
+              '<input type="text" data-quiz-mc-text="' + i + ':' + j + '" value="' + esc(opt) + '" placeholder="보기 ' + (j+1) + '" style="flex:1; padding:7px 9px; border-radius:6px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink);">' +
+              '<button class="mini-btn" data-quiz-mc-del="' + i + ':' + j + '">삭제</button>' +
+            '</div>'
+          );
+        }).join('');
+        body2 = '<div>' + optsHtml + '<button class="mini-btn" data-quiz-mc-add="' + i + '">+ 보기 추가</button></div>';
+      } else {
+        body2 = (
+          '<div style="display:flex; gap:8px;">' +
+            '<button class="mini-btn' + (q.answer_index === 0 ? ' active' : '') + '" data-quiz-ox="' + i + ':0'+ '">정답: O</button>' +
+            '<button class="mini-btn' + (q.answer_index === 1 ? ' active' : '') + '" data-quiz-ox="' + i + ':1' + '">정답: X</button>' +
+          '</div>'
+        );
+      }
+      return (
+        '<div class="quiz-q-edit">' +
+          '<div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">' +
+            '<select data-quiz-type="' + i + '"><option value="ox"' + (q.type !== 'mc' ? ' selected' : '') + '>O/X</option><option value="mc"' + (q.type === 'mc' ? ' selected' : '') + '>객관식</option></select>' +
+            '<button class="mini-btn" data-quiz-del="' + i + '" style="margin-left:auto;">문제 삭제</button>' +
+          '</div>' +
+          '<textarea rows="2" data-quiz-question="' + i + '" placeholder="문제 내용" style="margin-bottom:8px;">' + esc(q.question) + '</textarea>' +
+          body2 +
+        '</div>'
+      );
+    }).join('');
+
     body.innerHTML =
       '<div class="form-card">' +
         '<div class="field"><label>제목</label><input type="text" id="fTitle" value="' + esc(draft.title) + '" placeholder="예: 컵홀더 접는 방법"></div>' +
@@ -1109,6 +1256,13 @@
         '<div class="field"><label>포장 비품 (완성 사진 + 필요한 포장재를 함께 보여줘요)</label>' +
           '<div class="supply-pick-grid" id="supplyPickGrid">' + supplyPickHtml(draft) + '</div>' +
           (state.supplies.length ? '' : '<div class="hint">등록된 비품 사진이 없어요. 관리자 화면 → 포장 비품에서 먼저 등록해주세요.</div>') +
+        '</div>' +
+        '<div class="field"><label>이해도 퀴즈 (선택)</label>' +
+          '<div id="quizList">' + quizHtml + '</div>' +
+          '<button class="mini-btn" id="btnAddQuiz">+ 문제 추가</button>' +
+          (draft.steps.filter(function(s){ return s.trim(); }).length ? '' : '<div class="hint">단계별 설명이 비어 있어요. 문제를 만들려면 먼저 단계 설명을 채워주세요.</div>') +
+          '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:12px;"><input type="checkbox" id="fQuizRequired"' + (draft.quiz_required ? ' checked' : '') + '> 통과해야 확인 인정</label>' +
+          '<div class="hint">켜면 퀴즈를 맞혀야 "확인했어요"가 눌려요. 끄면 참고용으로 풀고 확인은 그대로 됩니다.</div>' +
         '</div>' +
         '<div class="field"><label>태그 (쉼표로 구분)</label><input type="text" id="fTags" value="' + esc((draft.tags||[]).join(', ')) + '" placeholder="예: 포장, 컵홀더, 테이크아웃"></div>' +
         '<div class="form-actions">' +
@@ -1176,6 +1330,71 @@
         render();
       }).catch(function(err){
         toast('추가 실패: ' + (err.message || err));
+      });
+    });
+
+    var fQuizRequired = document.getElementById('fQuizRequired');
+    if (fQuizRequired) fQuizRequired.addEventListener('change', function(e){ draft.quiz_required = e.target.checked; });
+
+    var btnAddQuiz = document.getElementById('btnAddQuiz');
+    if (btnAddQuiz) btnAddQuiz.addEventListener('click', function(){
+      if (!draft.quiz_questions) draft.quiz_questions = [];
+      draft.quiz_questions.push({ type: 'ox', question: '', options: [], answer_index: 0 });
+      render();
+    });
+
+    body.querySelectorAll('[data-quiz-del]').forEach(function(el){
+      el.addEventListener('click', function(){
+        draft.quiz_questions.splice(+el.getAttribute('data-quiz-del'), 1);
+        render();
+      });
+    });
+    body.querySelectorAll('[data-quiz-type]').forEach(function(el){
+      el.addEventListener('change', function(){
+        var q = draft.quiz_questions[+el.getAttribute('data-quiz-type')];
+        q.type = el.value;
+        q.answer_index = 0;
+        if (q.type === 'mc' && !q.options.length) q.options = ['', ''];
+        render();
+      });
+    });
+    body.querySelectorAll('[data-quiz-question]').forEach(function(el){
+      el.addEventListener('input', function(){
+        draft.quiz_questions[+el.getAttribute('data-quiz-question')].question = el.value;
+      });
+    });
+    body.querySelectorAll('[data-quiz-ox]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var parts = el.getAttribute('data-quiz-ox').split(':');
+        draft.quiz_questions[+parts[0]].answer_index = +parts[1];
+        render();
+      });
+    });
+    body.querySelectorAll('[data-quiz-mc-answer]').forEach(function(el){
+      el.addEventListener('change', function(){
+        var parts = el.getAttribute('data-quiz-mc-answer').split(':');
+        draft.quiz_questions[+parts[0]].answer_index = +parts[1];
+      });
+    });
+    body.querySelectorAll('[data-quiz-mc-text]').forEach(function(el){
+      el.addEventListener('input', function(){
+        var parts = el.getAttribute('data-quiz-mc-text').split(':');
+        draft.quiz_questions[+parts[0]].options[+parts[1]] = el.value;
+      });
+    });
+    body.querySelectorAll('[data-quiz-mc-del]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var parts = el.getAttribute('data-quiz-mc-del').split(':');
+        var q = draft.quiz_questions[+parts[0]];
+        q.options.splice(+parts[1], 1);
+        if (q.answer_index >= q.options.length) q.answer_index = 0;
+        render();
+      });
+    });
+    body.querySelectorAll('[data-quiz-mc-add]').forEach(function(el){
+      el.addEventListener('click', function(){
+        draft.quiz_questions[+el.getAttribute('data-quiz-mc-add')].options.push('');
+        render();
       });
     });
 
@@ -1270,24 +1489,47 @@
         supply_ids: draft.supply_ids || [],
         photos: draft.photos || [],
         steps: (draft.steps||[]).map(function(s){ return s.trim(); }).filter(Boolean),
+        quiz_required: !!draft.quiz_required,
         updated_at: new Date().toISOString()
       };
+      var cleanQuestions = (draft.quiz_questions||[])
+        .map(function(q){
+          return {
+            type: q.type === 'mc' ? 'mc' : 'ox',
+            question: (q.question||'').trim(),
+            options: q.type === 'mc' ? (q.options||[]).map(function(o){ return o.trim(); }).filter(Boolean) : [],
+            answer_index: q.answer_index || 0
+          };
+        })
+        .filter(function(q){ return q.question && (q.type === 'ox' || q.options.length >= 2); });
+
       var btn = document.getElementById('btnSaveManual');
       btn.disabled = true;
       var req = draft.id
         ? sb.from('manuals').update(payload).eq('id', draft.id).select()
         : sb.from('manuals').insert(payload).select();
       req.then(function(res){
-        if (res.error){ toast('저장 실패: ' + res.error.message); btn.disabled = false; return; }
+        if (res.error) throw res.error;
         var saved = res.data[0];
         if (draft.id){
           state.manuals = state.manuals.map(function(m){ return m.id === saved.id ? saved : m; });
         } else {
           state.manuals.unshift(saved);
         }
+        return sb.from('manual_quiz_questions').delete().eq('manual_id', saved.id).then(function(){
+          if (!cleanQuestions.length) return;
+          return sb.from('manual_quiz_questions').insert(cleanQuestions.map(function(q, i){
+            return Object.assign({}, q, { manual_id: saved.id, sort_order: i });
+          }));
+        });
+      }).then(function(){
         state.editingManual = null;
         toast('저장했어요.');
         render();
+        refreshLateCount();
+      }).catch(function(err){
+        toast('저장 실패: ' + (err.message || err));
+        btn.disabled = false;
       });
     });
   }
@@ -1601,7 +1843,7 @@
         }).join('');
         return (
           '<div class="list-row">' +
-            '<div class="info"><div class="t">' + esc(s.name) + '</div><div class="s">' + esc(fmtDate(s.created_at).slice(0, 10)) + ' 등록 · ' + daysSince(s.created_at) + '일째</div></div>' +
+            '<div class="info"><div class="t">' + esc(s.name) + '</div><div class="s">' + esc(fmtDate(hireDate(s)).slice(0, 10)) + ' 입사 · ' + daysSince(hireDate(s)) + '일째</div></div>' +
             '<div class="row-actions">' +
               '<select class="icon-btn" data-staff-branch="' + esc(s.id) + '">' + staffBranchOptions + '</select>' +
               '<button class="icon-btn danger" data-staff-del="' + esc(s.id) + '">삭제</button>' +
@@ -1693,7 +1935,7 @@
       result.innerHTML = '<div class="empty">아직 "신입 필수"로 지정된 매뉴얼이 없어요.<br>매뉴얼 관리 → 수정에서 "신입 필수 매뉴얼"을 체크해주세요.</div>';
       return;
     }
-    var staffList = state.staff.filter(function(s){ return !state.progressBranchId || s.branch_id === state.progressBranchId; });
+    var staffList = state.staff.filter(function(s){ return s.active !== false && (!state.progressBranchId || s.branch_id === state.progressBranchId); });
     if (!staffList.length){
       result.innerHTML = '<div class="empty">이 매장에 등록된 직원이 없어요.</div>';
       return;
@@ -1716,7 +1958,7 @@
         var doneCount = required.length - remaining.length;
         var last = null;
         Object.keys(done).forEach(function(k){ if (!last || done[k] > last) last = done[k]; });
-        var days = daysSince(s.created_at);
+        var days = daysSince(hireDate(s));
         return { staff: s, remaining: remaining, doneCount: doneCount, last: last, days: days, late: remaining.length > 0 && days > 7 };
       });
       cards.sort(function(a, b){
